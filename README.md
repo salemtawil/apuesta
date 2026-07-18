@@ -1,38 +1,21 @@
 # BetAlpha Manager
 
-Aplicación privada para registrar apuestas deportivas, estimar valor esperado, administrar banca y revisar resultados. Es una herramienta de apoyo a decisiones: no promete ganancias, no ejecuta apuestas y no solicita credenciales de Triunfobet.
-
-## Estado
-
-MVP en construcción. La Fase 0 está documentada y la Fase 1 tiene base backend/frontend.
+Herramienta privada para analizar cartelera deportiva, comparar cuotas reales, registrar apuestas, controlar banca y revisar resultados. Es apoyo a decisiones: no promete ganancias, no ejecuta apuestas y no solicita credenciales de casas de apuestas.
 
 ## Estructura
 
 ```text
-backend/      FastAPI, servicios de cálculo, tests y migraciones
-frontend/     Next.js App Router
-docs/         auditoría, arquitectura, datos, riesgos y ADRs
-supabase/     borradores RLS
-templates/    plantilla CSV Triunfobet
+./                 Next.js App Router listo para Vercel
+backend/           FastAPI, sync de odds, modelos, tests y migraciones
+docs/              arquitectura, auditoria, riesgos y notas tecnicas
+supabase/          borradores RLS
+templates/         plantilla CSV
 ```
-
-## Backend local
-
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev]"
-.\.venv\Scripts\python -m alembic upgrade head
-.\.venv\Scripts\python -m pytest
-.\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
-```
-
-API: http://localhost:8000/docs
 
 ## Frontend local
 
 ```powershell
-cd frontend
+cd C:\Proyectos\apuesta
 copy .env.example .env.local
 npm.cmd install
 npm.cmd run dev
@@ -40,72 +23,54 @@ npm.cmd run dev
 
 Frontend: http://localhost:3000
 
-Nota Windows: si el proyecto está dentro de OneDrive y `npm install` se queda extrayendo `next` o `@next/swc-win32-x64-msvc`, moverlo a una ruta local como `C:\Proyectos\apuesta` evita el bloqueo.
-
-## Docker
+## Backend local
 
 ```powershell
-docker compose up --build
+cd C:\Proyectos\apuesta\backend
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[dev]"
+.\.venv\Scripts\python -m alembic upgrade head
+.\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
 ```
+
+API: http://localhost:8000/docs
 
 ## Variables
 
-Copiar `backend/.env.example` a `backend/.env`. No guardar secretos reales en el repositorio.
+Frontend:
 
-Para sincronizar odds reales desde The Odds API:
+```env
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
+```
+
+Backend:
 
 ```env
 THE_ODDS_API_KEY=tu_api_key
 ```
 
-## CSV Triunfobet
+No subas secretos reales al repositorio.
 
-Plantilla: `templates/triunfobet_import_template.csv`.
+## Vercel
 
-## API MVP
+El frontend ya esta en la raiz. Vercel debe usar:
 
-- `GET /api/v1/sports`
-- `POST /api/v1/bankrolls`
-- `POST /api/v1/bankroll-transactions`
-- `GET /api/v1/bankroll-transactions`
-- `GET /api/v1/bankroll-control`
-- `POST /api/v1/sportsbooks`
-- `POST /api/v1/events`
-- `POST /api/v1/markets`
-- `GET /api/v1/markets`
-- `POST /api/v1/odds`
-- `POST /api/v1/intelligence/team-stats`
-- `GET /api/v1/intelligence/team-stats`
-- `POST /api/v1/intelligence/injuries`
-- `GET /api/v1/intelligence/injuries`
-- `POST /api/v1/intelligence/market-movements`
-- `GET /api/v1/intelligence/market-movements`
-- `POST /api/v1/intelligence/analyze`
-- `GET /api/v1/intelligence/analyses`
-- `POST /api/v1/intelligence/providers`
-- `GET /api/v1/intelligence/providers`
-- `POST /api/v1/intelligence/sync/odds`
-- `GET /api/v1/intelligence/sync/jobs`
-- `GET /api/v1/intelligence/predictions`
-- `PATCH /api/v1/intelligence/predictions/{prediction_id}`
-- `POST /api/v1/intelligence/backtests/run`
-- `GET /api/v1/intelligence/backtests`
-- `POST /api/v1/assessments/stored`
-- `POST /api/v1/bets`
-- `GET /api/v1/bets`
-- `GET /api/v1/bets/{bet_id}`
-- `POST /api/v1/bets/{bet_id}/settle`
-- `POST /api/v1/postmortems`
-- `GET /api/v1/dashboard`
-- `GET /api/v1/analytics/summary`
-- `GET /api/v1/exports/bets.csv`
-- `POST /api/v1/imports/csv/stored`
-- `GET /api/v1/imports/rows`
-- `PATCH /api/v1/imports/rows/{row_id}`
-- `POST /api/v1/imports/rows/{row_id}/confirm`
+```json
+{
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs"
+}
+```
 
-## Guías rápidas
+En Vercel agrega `NEXT_PUBLIC_API_BASE_URL` con la URL publica del backend, terminando en `/api/v1`.
 
-Para añadir un deporte: crear catálogo en `sports`, definir mercados soportados y agregar reglas de settlement/correlación si el deporte lo requiere.
+El backend FastAPI se publica aparte, por ejemplo en Render, Railway, Fly.io, VPS o Docker.
 
-Para añadir un modelo: implementar una clase con `fit`, `predict_proba`, `backtest`, `calibrate`, `explain`, `serialize` y `load`; registrar versión y guardar predicciones con fuente explícita.
+## Validacion
+
+```powershell
+npm.cmd run lint
+npm.cmd run build
+```
