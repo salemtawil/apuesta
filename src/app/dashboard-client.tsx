@@ -67,6 +67,13 @@ const sportSyncOptions = [
 ];
 
 const popularUsSportKeys = ["baseball_mlb", "basketball_wnba", "americanfootball_nfl", "soccer_usa_mls"];
+const coreMarketKeys = ["h2h"];
+const standardMarketKeys = ["h2h", "spreads", "totals"];
+const marketSyncOptions = [
+  { key: "h2h", label: "Ganador", note: "moneyline / 1X2" },
+  { key: "spreads", label: "Handicap", note: "spread" },
+  { key: "totals", label: "Altas/Bajas", note: "total puntos/goles" },
+];
 const triunfobetStyleKeys = [
   "soccer_mexico_ligamx",
   "soccer_epl",
@@ -552,6 +559,7 @@ export default function DashboardClient() {
   const [lastAssessment, setLastAssessment] = useState<AssessmentRead | null>(null);
   const [selectedSimpleGameId, setSelectedSimpleGameId] = useState<string | null>(null);
   const [selectedSportKeys, setSelectedSportKeys] = useState<string[]>(["baseball_mlb"]);
+  const [selectedMarketKeys, setSelectedMarketKeys] = useState<string[]>(coreMarketKeys);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Listo para sincronizar con FastAPI.");
   const [error, setError] = useState<string | null>(null);
@@ -880,7 +888,7 @@ export default function DashboardClient() {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
         sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
         regions: "us",
-        markets: ["h2h", "spreads", "totals"],
+        markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
       });
       await refresh();
       setMessage(
@@ -1123,6 +1131,8 @@ export default function DashboardClient() {
               lastOddsSync={lastOddsSync}
               onPrepareGame={prepareSimpleGame}
               onRefresh={runOddsSync}
+              selectedMarketKeys={selectedMarketKeys}
+              setSelectedMarketKeys={setSelectedMarketKeys}
               selectedSportKeys={selectedSportKeys}
               setSelectedSportKeys={setSelectedSportKeys}
               selectedGame={selectedSimpleGame}
@@ -1599,6 +1609,8 @@ function SimpleToday({
   lastOddsSync,
   onPrepareGame,
   onRefresh,
+  selectedMarketKeys,
+  setSelectedMarketKeys,
   selectedSportKeys,
   setSelectedSportKeys,
   selectedGame,
@@ -1608,6 +1620,8 @@ function SimpleToday({
   lastOddsSync: SyncJobRun | undefined;
   onPrepareGame: (game: SimpleGame) => void;
   onRefresh: () => void;
+  selectedMarketKeys: string[];
+  setSelectedMarketKeys: (marketKeys: string[]) => void;
   selectedSportKeys: string[];
   setSelectedSportKeys: (sportKeys: string[]) => void;
   selectedGame: SimpleGame | null;
@@ -1633,6 +1647,11 @@ function SimpleToday({
     .filter((option) => selectedSportKeys.includes(option.key))
     .map((option) => option.label)
     .join(", ");
+  const estimatedSyncCredits = Math.max(1, selectedSportKeys.length) * Math.max(1, selectedMarketKeys.length);
+  const selectedMarketLabels = marketSyncOptions
+    .filter((option) => selectedMarketKeys.includes(option.key))
+    .map((option) => option.label)
+    .join(", ");
 
   function toggleSport(key: string) {
     if (selectedSportKeys.includes(key)) {
@@ -1641,6 +1660,15 @@ function SimpleToday({
       return;
     }
     setSelectedSportKeys([...selectedSportKeys, key]);
+  }
+
+  function toggleMarket(key: string) {
+    if (selectedMarketKeys.includes(key)) {
+      const next = selectedMarketKeys.filter((marketKey) => marketKey !== key);
+      setSelectedMarketKeys(next.length ? next : coreMarketKeys);
+      return;
+    }
+    setSelectedMarketKeys([...selectedMarketKeys, key]);
   }
 
   return (
@@ -1657,15 +1685,50 @@ function SimpleToday({
       <div className="sport-sync-panel">
         <div>
           <p className="sport-sync-title">Deportes para sincronizar</p>
-          <p className="sport-sync-note">Tenis y padel aparecen en Triunfobet, pero The Odds API no los reporta activos en tu cuenta ahora mismo.</p>
+          <p className="sport-sync-note">Triunfobet ofrece mas deportes que The Odds API no siempre cubre en vivo; sincroniza primero lo que vayas a evaluar hoy.</p>
           <p>{selectedSportLabels || "MLB"} · ordenados del proximo a empezar hasta el ultimo. Cada liga seleccionada puede consumir creditos.</p>
         </div>
+        <p className="sport-sync-note">Mercados: {selectedMarketLabels || "Ganador"} · costo estimado: {estimatedSyncCredits} credito(s).</p>
         <div className="sport-picker">
+          <div className="market-sync-box">
+            <div>
+              <span>Mercados</span>
+              <small>Menos mercados = menos creditos</small>
+            </div>
+            <div className="sport-chip-row">
+              {marketSyncOptions.map((option) => (
+                <button
+                  className={selectedMarketKeys.includes(option.key) ? "sport-chip sport-chip-active" : "sport-chip"}
+                  disabled={busy}
+                  key={option.key}
+                  onClick={() => toggleMarket(option.key)}
+                  title={option.note}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="sport-preset-row">
             <button
               className="mini-btn"
               disabled={busy}
-              onClick={() => setSelectedSportKeys(triunfobetStyleKeys)}
+              onClick={() => {
+                setSelectedSportKeys(["soccer_mexico_ligamx", "soccer_epl", "baseball_mlb", "basketball_wnba"]);
+                setSelectedMarketKeys(coreMarketKeys);
+              }}
+              type="button"
+            >
+              Ahorro
+            </button>
+            <button
+              className="mini-btn"
+              disabled={busy}
+              onClick={() => {
+                setSelectedSportKeys(triunfobetStyleKeys);
+                setSelectedMarketKeys(standardMarketKeys);
+              }}
               type="button"
             >
               Triunfobet amplio
@@ -1681,7 +1744,10 @@ function SimpleToday({
             <button
               className="mini-btn"
               disabled={busy}
-              onClick={() => setSelectedSportKeys(popularUsSportKeys)}
+              onClick={() => {
+                setSelectedSportKeys(popularUsSportKeys);
+                setSelectedMarketKeys(coreMarketKeys);
+              }}
               type="button"
             >
               USA principales
@@ -1689,7 +1755,10 @@ function SimpleToday({
             <button
               className="mini-btn"
               disabled={busy}
-              onClick={() => setSelectedSportKeys([...new Set([...popularUsSportKeys, ...popularSoccerKeys])])}
+              onClick={() => {
+                setSelectedSportKeys([...new Set([...popularUsSportKeys, ...popularSoccerKeys])]);
+                setSelectedMarketKeys(standardMarketKeys);
+              }}
               type="button"
             >
               Todas populares
@@ -1697,7 +1766,10 @@ function SimpleToday({
             <button
               className="mini-btn"
               disabled={busy}
-              onClick={() => setSelectedSportKeys(sportSyncOptions.map((option) => option.key))}
+              onClick={() => {
+                setSelectedSportKeys(sportSyncOptions.map((option) => option.key));
+                setSelectedMarketKeys(coreMarketKeys);
+              }}
               type="button"
             >
               Todo disponible
