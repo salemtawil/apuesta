@@ -1,6 +1,18 @@
 {
-  "installCommand": "npm install",
+  "installCommand": "npm install && python -m pip install -r requirements.txt",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{backend/tests/**,backend/alembic/**,docs/**,templates/**,supabase/**,**/*.db,**/*.sqlite,.next/**,node_modules/**}"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "/api/index.py"
+    }
+  ]
 }
