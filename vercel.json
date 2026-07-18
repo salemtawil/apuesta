@@ -1,5 +1,5 @@
 {
-  "installCommand": "npm install && python -m pip install -r requirements.txt",
+  "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",

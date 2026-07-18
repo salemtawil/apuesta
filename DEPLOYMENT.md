@@ -40,7 +40,7 @@ Valores esperados:
 
 ```text
 Framework Preset: Next.js
-Install Command: npm install && python -m pip install -r requirements.txt
+Install Command: npm install
 Build Command: npm run build
 Output Directory: .next
 ```
