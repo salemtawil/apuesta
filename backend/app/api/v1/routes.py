@@ -85,6 +85,8 @@ from app.schemas.mvp import (
     SyncJobRunRead,
     TeamStatCreate,
     TeamStatRead,
+    TheOddsEventsRequest,
+    TheOddsEventsResponse,
     TheOddsSyncRequest,
     TheOddsSyncResponse,
 )
@@ -103,7 +105,7 @@ from app.services.odds import (
 )
 from app.services.settlement import profit_loss, settle_single
 from app.services.sports_intelligence import analyze_matchup
-from app.services.the_odds_api import sync_the_odds
+from app.services.the_odds_api import discover_the_odds_events, sync_the_odds
 
 router = APIRouter()
 
@@ -996,6 +998,55 @@ def list_sync_jobs(
     user_id: str = Depends(current_user_id),
 ) -> list[SyncJobRun]:
     return list(db.scalars(select(SyncJobRun).where(SyncJobRun.user_id == user_id).order_by(SyncJobRun.created_at.desc())).all())
+
+
+@router.post("/intelligence/events/candidates", response_model=TheOddsEventsResponse)
+def discover_the_odds_candidates(
+    payload: TheOddsEventsRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user_id),
+) -> TheOddsEventsResponse:
+    settings = get_settings()
+    if not settings.the_odds_api_key:
+        raise HTTPException(status_code=400, detail="THE_ODDS_API_KEY is not configured")
+    started_at = utc_now_text()
+    result = discover_the_odds_events(
+        db=db,
+        user_id=user_id,
+        api_key=settings.the_odds_api_key,
+        sport_keys=payload.sport_keys,
+    )
+    finished_at = utc_now_text()
+    provider = db.scalar(
+        select(DataProvider).where(
+            DataProvider.user_id == user_id,
+            DataProvider.provider_key == "the_odds_api",
+        )
+    )
+    if provider is not None:
+        provider.last_sync_at = finished_at
+        provider.status = "error" if result.errors and result.records_upserted == 0 else "configured"
+    job = SyncJobRun(
+        user_id=user_id,
+        provider_key="the_odds_api",
+        job_type="events_candidates",
+        status="error" if result.errors and result.records_upserted == 0 else "success",
+        started_at=started_at,
+        finished_at=finished_at,
+        records_upserted=result.records_upserted,
+        error_message="; ".join(result.errors) if result.errors else None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return TheOddsEventsResponse(
+        job=SyncJobRunRead.model_validate(job),
+        sports_seen=result.sports_seen,
+        events_upserted=result.events_upserted,
+        requests_used=result.requests_used,
+        requests_remaining=result.requests_remaining,
+        errors=result.errors,
+    )
 
 
 @router.post("/intelligence/sync/odds", response_model=TheOddsSyncResponse)

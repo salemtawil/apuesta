@@ -292,6 +292,19 @@ class TheOddsSyncRequest(BaseModel):
     markets: list[str] = Field(default_factory=lambda: ["h2h", "spreads", "totals"])
 
 
+class TheOddsEventsRequest(BaseModel):
+    sport_keys: list[str] = Field(default_factory=lambda: ["baseball_mlb"])
+
+
+class TheOddsEventsResponse(BaseModel):
+    job: SyncJobRunRead
+    sports_seen: int
+    events_upserted: int
+    requests_used: str | None
+    requests_remaining: str | None
+    errors: list[str]
+
+
 class TheOddsSyncResponse(BaseModel):
     job: SyncJobRunRead
     sports_seen: int

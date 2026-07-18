@@ -32,6 +32,9 @@ class TheOddsClient(Protocol):
     ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         ...
 
+    def get_events(self, sport_key: str, date_format: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        ...
+
 
 class TheOddsApiClient:
     def __init__(self, api_key: str, base_url: str = THE_ODDS_BASE_URL) -> None:
@@ -70,6 +73,15 @@ class TheOddsApiClient:
         )
         return list(payload), headers
 
+    def get_events(self, sport_key: str, date_format: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        payload, headers = self._get(
+            f"/v4/sports/{sport_key}/events/",
+            {
+                "dateFormat": date_format,
+            },
+        )
+        return list(payload), headers
+
 
 @dataclass
 class TheOddsSyncResult:
@@ -85,6 +97,19 @@ class TheOddsSyncResult:
     @property
     def records_upserted(self) -> int:
         return self.events_upserted + self.markets_upserted + self.odds_inserted + self.sportsbooks_upserted
+
+
+@dataclass
+class TheOddsEventsResult:
+    sports_seen: int = 0
+    events_upserted: int = 0
+    requests_used: str | None = None
+    requests_remaining: str | None = None
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def records_upserted(self) -> int:
+        return self.events_upserted
 
 
 def normalize_markets(markets: list[str] | None) -> list[str]:
@@ -147,7 +172,42 @@ def sync_the_odds(
     return result
 
 
-def update_usage(result: TheOddsSyncResult, headers: dict[str, str]) -> None:
+def discover_the_odds_events(
+    db: Session,
+    user_id: str,
+    api_key: str,
+    sport_keys: list[str] | None = None,
+    client: TheOddsClient | None = None,
+) -> TheOddsEventsResult:
+    active_client = client or TheOddsApiClient(api_key)
+    selected_sports = sport_keys or DEFAULT_SPORT_KEYS
+    result = TheOddsEventsResult()
+
+    sports_payload, sports_headers = active_client.get_sports()
+    result.sports_seen = len(sports_payload)
+    update_usage(result, sports_headers)
+    sport_meta = {item.get("key"): item for item in sports_payload if item.get("key")}
+
+    ensure_provider(db, user_id)
+
+    for sport_key in selected_sports:
+        try:
+            events_payload, events_headers = active_client.get_events(
+                sport_key=sport_key,
+                date_format="iso",
+            )
+            update_usage(result, events_headers)
+            sport = upsert_sport(db, sport_key, sport_meta.get(sport_key))
+            for event_payload in events_payload:
+                upsert_event(db, user_id, sport, event_payload)
+                result.events_upserted += 1
+        except Exception as exc:  # pragma: no cover - exercised by API route behavior.
+            result.errors.append(f"{sport_key}: {exc}")
+
+    return result
+
+
+def update_usage(result: TheOddsSyncResult | TheOddsEventsResult, headers: dict[str, str]) -> None:
     result.requests_used = headers.get("x-requests-used") or result.requests_used
     result.requests_remaining = headers.get("x-requests-remaining") or result.requests_remaining
 

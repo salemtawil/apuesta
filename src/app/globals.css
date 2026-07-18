@@ -145,6 +145,13 @@ button:disabled {
   font-size: 0.925rem;
 }
 
+.simple-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
 .sport-sync-panel {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);

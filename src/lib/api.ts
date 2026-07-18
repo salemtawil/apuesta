@@ -323,6 +323,15 @@ export type TheOddsSyncResponse = {
   errors: string[];
 };
 
+export type TheOddsEventsResponse = {
+  job: SyncJobRun;
+  sports_seen: number;
+  events_upserted: number;
+  requests_used: string | null;
+  requests_remaining: string | null;
+  errors: string[];
+};
+
 export type PredictionRecord = {
   id: string;
   event_id: string;

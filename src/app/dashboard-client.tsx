@@ -23,6 +23,7 @@ import {
   Sportsbook,
   SyncJobRun,
   TeamStat,
+  TheOddsEventsResponse,
   TheOddsSyncResponse,
   getJson,
   patchJson,
@@ -107,7 +108,7 @@ type BestPrice = {
 };
 
 type DateFilterMode = "today" | "tomorrow" | "next24" | "next48" | "next7" | "all";
-type DecisionFilterMode = "all" | "Mejor lectura" | "Revisar" | "Sin ventaja clara" | "Faltan cuotas";
+type DecisionFilterMode = "all" | "Mejor lectura" | "Revisar" | "Sin ventaja clara" | "Faltan cuotas" | "Actualizar cuotas";
 
 type ForecastLine = {
   label: string;
@@ -135,6 +136,7 @@ type MarketForecast = {
 type SimpleGame = {
   event: EventItem;
   sportName: string;
+  sportSlug: string;
   startsLabel: string;
   bestHome: BestPrice | null;
   bestAway: BestPrice | null;
@@ -515,6 +517,7 @@ function buildSimpleGames(
       return {
         event,
         sportName: sportsById.get(event.sport_id)?.name ?? event.league_name,
+        sportSlug: sportsById.get(event.sport_id)?.slug ?? "",
         startsLabel: shortDate(event.starts_at),
         bestHome: homePrice,
         bestAway: awayPrice,
@@ -901,6 +904,49 @@ export default function DashboardClient() {
     }
   }
 
+  async function runCandidateScan() {
+    setBusy(true);
+    setError(null);
+    try {
+      const scanned = await postJson<TheOddsEventsResponse>("/intelligence/events/candidates", {
+        sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
+      });
+      await refresh();
+      setMessage(
+        `Candidatos cargados sin odds completas: ${scanned.events_upserted} juegos. Creditos restantes: ${scanned.requests_remaining ?? "n/d"}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron buscar candidatos.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runOddsSyncForGame(game: SimpleGame) {
+    if (!game.sportSlug) {
+      setError("No se pudo identificar el deporte de este juego.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
+        sport_keys: [game.sportSlug],
+        regions: "us",
+        markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
+      });
+      await refresh();
+      setSelectedSimpleGameId(game.event.id);
+      setMessage(
+        `Cuotas cargadas para ${game.sportName}: ${synced.events_upserted} juegos, ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron cargar cuotas para este candidato.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function prepareSimpleGame(game: SimpleGame) {
     setSelectedSimpleGameId(game.event.id);
     setAnalysisForm((current) => ({
@@ -1129,8 +1175,10 @@ export default function DashboardClient() {
               busy={busy}
               games={simpleGames}
               lastOddsSync={lastOddsSync}
+              onLoadOddsForGame={runOddsSyncForGame}
               onPrepareGame={prepareSimpleGame}
               onRefresh={runOddsSync}
+              onScanEvents={runCandidateScan}
               selectedMarketKeys={selectedMarketKeys}
               setSelectedMarketKeys={setSelectedMarketKeys}
               selectedSportKeys={selectedSportKeys}
@@ -1607,8 +1655,10 @@ function SimpleToday({
   busy,
   games,
   lastOddsSync,
+  onLoadOddsForGame,
   onPrepareGame,
   onRefresh,
+  onScanEvents,
   selectedMarketKeys,
   setSelectedMarketKeys,
   selectedSportKeys,
@@ -1618,8 +1668,10 @@ function SimpleToday({
   busy: boolean;
   games: SimpleGame[];
   lastOddsSync: SyncJobRun | undefined;
+  onLoadOddsForGame: (game: SimpleGame) => void;
   onPrepareGame: (game: SimpleGame) => void;
   onRefresh: () => void;
+  onScanEvents: () => void;
   selectedMarketKeys: string[];
   setSelectedMarketKeys: (marketKeys: string[]) => void;
   selectedSportKeys: string[];
@@ -1640,7 +1692,7 @@ function SimpleToday({
       counts.all += 1;
       return counts;
     },
-    { all: 0, "Mejor lectura": 0, Revisar: 0, "Sin ventaja clara": 0, "Faltan cuotas": 0 },
+    { all: 0, "Mejor lectura": 0, Revisar: 0, "Sin ventaja clara": 0, "Faltan cuotas": 0, "Actualizar cuotas": 0 },
   );
   const sportGroups = Array.from(new Set(sportSyncOptions.map((option) => option.group)));
   const selectedSportLabels = sportSyncOptions
@@ -1679,7 +1731,10 @@ function SimpleToday({
           <h2>Cartelera</h2>
           <p>Actualiza ligas reales y filtra por hoy, madrugada, proximas horas o toda la cartelera cargada.</p>
         </div>
-        <button className="btn btn-primary" disabled={busy} onClick={onRefresh}>Actualizar juegos reales</button>
+        <div className="simple-header-actions">
+          <button className="btn" disabled={busy} onClick={onScanEvents}>Buscar candidatos</button>
+          <button className="btn btn-primary" disabled={busy} onClick={onRefresh}>Actualizar cuotas</button>
+        </div>
       </div>
 
       <div className="sport-sync-panel">
@@ -1842,6 +1897,7 @@ function SimpleToday({
           ["Revisar", "Revisar"],
           ["Sin ventaja clara", "Sin ventaja clara"],
           ["Faltan cuotas", "Faltan cuotas"],
+          ["Actualizar cuotas", "Actualizar cuotas"],
         ].map(([mode, label]) => (
           <button
             className={decisionFilterMode === mode ? "decision-filter-btn decision-filter-active" : "decision-filter-btn"}
@@ -1862,6 +1918,7 @@ function SimpleToday({
             game={game}
             isSelected={selectedGame?.event.id === game.event.id}
             key={game.event.id}
+            onLoadOdds={onLoadOddsForGame}
             onPrepare={onPrepareGame}
           />
         ))}
@@ -1933,13 +1990,16 @@ function ForecastGamePanel({ game }: { game: SimpleGame }) {
 function ForecastGameCard({
   game,
   isSelected,
+  onLoadOdds,
   onPrepare,
 }: {
   game: SimpleGame;
   isSelected: boolean;
+  onLoadOdds: (game: SimpleGame) => void;
   onPrepare: (game: SimpleGame) => void;
 }) {
   const { forecast } = game;
+  const needsOdds = !(game.bestHome && game.bestAway);
 
   return (
     <article className={isSelected ? "game-card game-card-selected" : "game-card"}>
@@ -1994,7 +2054,11 @@ function ForecastGameCard({
       </div>
 
       <div className="game-actions">
-        <button className="btn" onClick={() => onPrepare(game)}>{isSelected ? "Pronostico abierto" : "Ver pronostico"}</button>
+        {needsOdds ? (
+          <button className="btn btn-primary" onClick={() => onLoadOdds(game)}>Traer cuotas</button>
+        ) : (
+          <button className="btn" onClick={() => onPrepare(game)}>{isSelected ? "Pronostico abierto" : "Ver pronostico"}</button>
+        )}
         <a className="mini-btn" href="#avanzado">Ver avanzado</a>
       </div>
     </article>
