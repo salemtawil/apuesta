@@ -22,6 +22,8 @@ git push -u origin main
 NEXT_PUBLIC_API_BASE_URL=https://tu-backend.com/api/v1
 ```
 
+No uses una configuracion `services` con `frontend` y `backend` dentro de `vercel.json`. Vercel no despliega este backend FastAPI como servicio desde ese JSON. Este repositorio despliega en Vercel solo la app Next.js de la raiz.
+
 ## Backend
 
 Vercel despliega la app Next.js que ahora esta en la raiz. El backend FastAPI debe estar publicado aparte, por ejemplo en Render, Railway, Fly.io, VPS o Docker.
