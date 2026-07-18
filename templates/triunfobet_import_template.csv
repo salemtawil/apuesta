@@ -1,0 +1,2 @@
+sport,league,event,home_team,away_team,starts_at,market_type,selection,line,odds,odds_format,sportsbook,captured_at
+DEMO Futbol,DEMO Liga,DEMO Equipo A vs DEMO Equipo B,DEMO Equipo A,DEMO Equipo B,2026-01-01T20:00:00Z,total,Over 1.5,1.5,1.72,decimal,Triunfobet,2026-01-01T12:00:00Z
