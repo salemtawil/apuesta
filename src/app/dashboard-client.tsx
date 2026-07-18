@@ -68,6 +68,7 @@ const sportSyncOptions = [
 ];
 
 const popularUsSportKeys = ["baseball_mlb", "basketball_wnba", "americanfootball_nfl", "soccer_usa_mls"];
+const defaultHunterSportKeys = ["baseball_mlb", "basketball_wnba", "soccer_usa_mls", "soccer_mexico_ligamx", "soccer_fifa_world_cup"];
 const coreMarketKeys = ["h2h"];
 const standardMarketKeys = ["h2h", "spreads", "totals"];
 const marketSyncOptions = [
@@ -699,7 +700,7 @@ export default function DashboardClient() {
   const [betDetail, setBetDetail] = useState<BetDetail | null>(null);
   const [lastAssessment, setLastAssessment] = useState<AssessmentRead | null>(null);
   const [selectedSimpleGameId, setSelectedSimpleGameId] = useState<string | null>(null);
-  const [selectedSportKeys, setSelectedSportKeys] = useState<string[]>(["baseball_mlb"]);
+  const [selectedSportKeys, setSelectedSportKeys] = useState<string[]>(defaultHunterSportKeys);
   const [selectedMarketKeys, setSelectedMarketKeys] = useState<string[]>(coreMarketKeys);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Listo para sincronizar con FastAPI.");
@@ -1027,7 +1028,7 @@ export default function DashboardClient() {
     setError(null);
     try {
       const scanned = await postJson<TheOddsEventsResponse>("/intelligence/events/candidates", {
-        sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
+        sport_keys: selectedSportKeys.length ? selectedSportKeys : defaultHunterSportKeys,
       });
       setSports((current) => mergeById(current, scanned.sports));
       setEvents(scanned.events);
@@ -1046,7 +1047,7 @@ export default function DashboardClient() {
     setError(null);
     try {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
-        sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
+        sport_keys: selectedSportKeys.length ? selectedSportKeys : defaultHunterSportKeys,
         regions: "us",
         markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
       });
@@ -1870,7 +1871,7 @@ function SimpleToday({
   function toggleSport(key: string) {
     if (selectedSportKeys.includes(key)) {
       const next = selectedSportKeys.filter((sportKey) => sportKey !== key);
-      setSelectedSportKeys(next.length ? next : ["baseball_mlb"]);
+      setSelectedSportKeys(next.length ? next : defaultHunterSportKeys);
       return;
     }
     setSelectedSportKeys([...selectedSportKeys, key]);
@@ -1894,6 +1895,50 @@ function SimpleToday({
           <p>Carga candidatos primero. Despues analiza solo el juego que tenga una razon clara para gastar cuotas.</p>
         </div>
         <div className="simple-header-actions">
+          <button
+            className="mini-btn"
+            disabled={busy}
+            onClick={() => {
+              setSelectedSportKeys(defaultHunterSportKeys);
+              setSelectedMarketKeys(coreMarketKeys);
+            }}
+            type="button"
+          >
+            Ahorro
+          </button>
+          <button
+            className="mini-btn"
+            disabled={busy}
+            onClick={() => {
+              setSelectedSportKeys(popularSoccerKeys);
+              setSelectedMarketKeys(coreMarketKeys);
+            }}
+            type="button"
+          >
+            Futbol
+          </button>
+          <button
+            className="mini-btn"
+            disabled={busy}
+            onClick={() => {
+              setSelectedSportKeys(popularUsSportKeys);
+              setSelectedMarketKeys(coreMarketKeys);
+            }}
+            type="button"
+          >
+            USA
+          </button>
+          <button
+            className="mini-btn"
+            disabled={busy}
+            onClick={() => {
+              setSelectedSportKeys(triunfobetStyleKeys);
+              setSelectedMarketKeys(standardMarketKeys);
+            }}
+            type="button"
+          >
+            Triunfobet
+          </button>
           <button className="btn btn-primary" disabled={busy} onClick={onScanEvents}>Buscar candidatos</button>
         </div>
       </div>
