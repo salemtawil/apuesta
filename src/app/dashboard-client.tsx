@@ -1296,8 +1296,8 @@ export default function DashboardClient() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="flex min-h-screen">
-        <aside className="hidden w-64 border-r border-[var(--border)] bg-[var(--panel)] px-4 py-5 lg:block">
+      <div className="min-h-screen">
+        <aside className="hidden">
           <div className="mb-7">
             <p className="text-xs font-semibold uppercase text-[var(--muted)]">Privado</p>
             <h1 className="mt-1 text-2xl font-semibold">BetAlpha Manager</h1>
@@ -1315,15 +1315,15 @@ export default function DashboardClient() {
           </nav>
         </aside>
 
-        <section className="flex-1">
-          <header className="border-b border-[var(--border)] bg-[var(--panel)] px-4 py-4 sm:px-6">
+        <section className="mx-auto max-w-7xl">
+          <header className="hunter-topbar">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm text-[var(--muted)]">API: {API_BASE}</p>
-                <h2 className="text-2xl font-semibold">Panel de decisiones</h2>
+                <p className="text-sm text-[var(--muted)]">Candidatos primero, creditos despues</p>
+                <h2 className="text-2xl font-semibold">Cazador de Picks</h2>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="btn" disabled={busy} onClick={() => refresh()}>Sincronizar</button>
+                <button className="btn" disabled={busy} onClick={() => refresh()}>Actualizar estado</button>
               </div>
             </div>
           </header>
@@ -1889,15 +1889,26 @@ function SimpleToday({
     <section className="simple-shell" id="hoy">
       <div className="simple-header">
         <div>
-          <p className="text-sm font-semibold uppercase text-[var(--muted)]">Modo simple</p>
-          <h2>Cartelera</h2>
-          <p>Actualiza ligas reales y filtra por hoy, madrugada, proximas horas o toda la cartelera cargada.</p>
+          <p className="text-sm font-semibold uppercase text-[var(--muted)]">Flujo recomendado</p>
+          <h2>Buscar juegos para analizar</h2>
+          <p>Carga candidatos primero. Despues analiza solo el juego que tenga una razon clara para gastar cuotas.</p>
         </div>
         <div className="simple-header-actions">
           <button className="btn btn-primary" disabled={busy} onClick={onScanEvents}>Buscar candidatos</button>
         </div>
       </div>
 
+      <div className="hunter-flow">
+        <div><strong>1</strong><span>Buscar candidatos</span><small>No trae cuotas completas.</small></div>
+        <div><strong>2</strong><span>Analizar un juego</span><small>Gasta solo en ese evento.</small></div>
+        <div><strong>3</strong><span>Profundizar</span><small>Solo si vale la pena.</small></div>
+      </div>
+
+      <details className="hunter-config">
+        <summary>
+          <span>Configurar deportes y mercados</span>
+          <small>{selectedSportLabels || "MLB"} · {selectedMarketLabels || "Ganador"} · aprox. {estimatedSyncCredits} credito(s)</small>
+        </summary>
       <div className="sport-sync-panel">
         <div>
           <p className="sport-sync-title">Deportes para sincronizar</p>
@@ -2013,6 +2024,7 @@ function SimpleToday({
           ))}
         </div>
       </div>
+      </details>
 
       <div className="simple-stats">
         <div>
@@ -2032,7 +2044,7 @@ function SimpleToday({
       <div className="date-filter-row" aria-label="Filtro de fecha">
         {[
           ["today", "Hoy"],
-          ["tomorrow", "Mañana"],
+          ["tomorrow", "Manana"],
           ["next24", "24h"],
           ["next48", "48h"],
           ["next7", "7 dias"],
@@ -2057,7 +2069,6 @@ function SimpleToday({
           ["Mejor lectura", "Mejor lectura"],
           ["Revisar", "Revisar"],
           ["Sin ventaja clara", "Sin ventaja clara"],
-          ["Faltan cuotas", "Faltan cuotas"],
           ["Actualizar cuotas", "Actualizar cuotas"],
         ].map(([mode, label]) => (
           <button
@@ -2086,8 +2097,8 @@ function SimpleToday({
         ))}
         {!visibleGames.length ? (
           <div className="empty-simple">
-            <h3>No hay juegos para {dateFilterLabel(dateFilterMode)}</h3>
-            <p>Selecciona ligas, presiona Actualizar juegos reales o cambia a Todos para revisar la cartelera completa cargada.</p>
+            <h3>No hay juegos visibles</h3>
+            <p>Presiona Buscar candidatos. Si carga juegos pero no aparecen, cambia el filtro a 24h, 48h o Todos.</p>
           </div>
         ) : null}
       </div>
@@ -2173,7 +2184,7 @@ function ForecastGameCard({
           <p className="game-meta">{game.sportName} · {game.startsLabel}</p>
           <h3>{game.event.event_name}</h3>
         </div>
-        <span className={`decision-pill decision-${game.decisionTone}`}>{game.decisionLabel}</span>
+        <span className={`decision-pill decision-${game.decisionTone}`}>{needsOdds ? "Candidato" : game.decisionLabel}</span>
       </div>
 
       <div className="forecast-main">
@@ -2184,7 +2195,7 @@ function ForecastGameCard({
         </div>
         <div>
           <span>{needsOdds ? "Siguiente paso" : "Confianza"}</span>
-          <strong>{needsOdds ? "Traer cuotas" : forecast.confidence}</strong>
+          <strong>{needsOdds ? "Analizar" : forecast.confidence}</strong>
           <small>{needsOdds ? "pedido por evento especifico" : forecast.probabilityGap === null ? "Sin diferencial" : `${Math.round(forecast.probabilityGap * 100)} pts de ventaja`}</small>
         </div>
       </div>
@@ -2196,7 +2207,7 @@ function ForecastGameCard({
         </div>
       ) : null}
 
-      <dl className="game-lines">
+      {!needsOdds ? <dl className="game-lines">
         <div>
           <dt>Moneyline</dt>
           <dd>{forecast.moneylineLean}</dd>
@@ -2218,7 +2229,7 @@ function ForecastGameCard({
             {game.bestDraw ? ` / Empate: ${game.bestDraw.decimalOdds.toFixed(2)}` : ""}
           </dd>
         </div>
-      </dl>
+      </dl> : null}
 
       <div className="game-read">
         <p><span>{needsOdds ? "Lectura previa:" : "Lectura:"}</span> {needsOdds ? "Aun no hay cuotas para inferir valor. Este filtro solo ayuda a decidir si vale gastar datos." : forecast.recommendation}</p>
@@ -2227,7 +2238,7 @@ function ForecastGameCard({
 
       <div className="game-actions">
         {needsOdds ? (
-          <button className="btn btn-primary" onClick={() => onLoadOdds(game)}>Traer cuotas</button>
+          <button className="btn btn-primary" onClick={() => onLoadOdds(game)}>Analizar</button>
         ) : (
           <button className="btn" onClick={() => onPrepare(game)}>{isSelected ? "Pronostico abierto" : "Ver pronostico"}</button>
         )}
@@ -2238,7 +2249,7 @@ function ForecastGameCard({
             title={deepMarketLabels(deepMarkets)}
             type="button"
           >
-            Analizar mas profundo · {deepMarkets.length}
+            Profundizar · {deepMarkets.length}
           </button>
         ) : null}
         <a className="mini-btn" href="#avanzado">Ver avanzado</a>
