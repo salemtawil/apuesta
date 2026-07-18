@@ -168,6 +168,27 @@ def market_to_read(db: Session, market: Market) -> MarketRead:
     )
 
 
+def state_snapshot(db: Session, user_id: str, event_ids: list[str] | None = None) -> dict:
+    event_query = select(Event).where(Event.user_id == user_id).order_by(Event.starts_at)
+    if event_ids:
+        event_query = event_query.where(Event.id.in_(event_ids))
+    events = list(db.scalars(event_query).all())
+    sport_ids = {event.sport_id for event in events}
+    sports = list(db.scalars(select(Sport).where(Sport.id.in_(sport_ids))).all()) if sport_ids else []
+    markets = list(db.scalars(select(Market).where(Market.event_id.in_([event.id for event in events]))).all()) if events else []
+    selection_ids = [selection.id for market in markets for selection in market.selections]
+    odds = list(db.scalars(select(OddsSnapshot).where(OddsSnapshot.user_id == user_id, OddsSnapshot.market_selection_id.in_(selection_ids))).all()) if selection_ids else []
+    sportsbook_ids = {item.sportsbook_id for item in odds}
+    sportsbooks = list(db.scalars(select(Sportsbook).where(Sportsbook.user_id == user_id, Sportsbook.id.in_(sportsbook_ids))).all()) if sportsbook_ids else []
+    return {
+        "sports": sports,
+        "events": events,
+        "markets": [market_to_read(db, market) for market in markets],
+        "odds": odds,
+        "sportsbooks": sportsbooks,
+    }
+
+
 def slugify(value: str) -> str:
     return value.strip().lower().replace("/", "-").replace(" ", "-")
 
@@ -1040,6 +1061,7 @@ def discover_the_odds_candidates(
     db.add(job)
     db.commit()
     db.refresh(job)
+    snapshot = state_snapshot(db, user_id)
     return TheOddsEventsResponse(
         job=SyncJobRunRead.model_validate(job),
         sports_seen=result.sports_seen,
@@ -1047,6 +1069,8 @@ def discover_the_odds_candidates(
         requests_used=result.requests_used,
         requests_remaining=result.requests_remaining,
         errors=result.errors,
+        sports=snapshot["sports"],
+        events=snapshot["events"],
     )
 
 
@@ -1091,6 +1115,7 @@ def run_the_odds_sync(
     db.add(job)
     db.commit()
     db.refresh(job)
+    snapshot = state_snapshot(db, user_id)
     return TheOddsSyncResponse(
         job=SyncJobRunRead.model_validate(job),
         sports_seen=result.sports_seen,
@@ -1101,6 +1126,11 @@ def run_the_odds_sync(
         requests_used=result.requests_used,
         requests_remaining=result.requests_remaining,
         errors=result.errors,
+        sports=snapshot["sports"],
+        events=snapshot["events"],
+        markets=snapshot["markets"],
+        odds=snapshot["odds"],
+        sportsbooks=snapshot["sportsbooks"],
     )
 
 
@@ -1174,6 +1204,7 @@ def run_the_odds_event_markets_sync(
     db.add(job)
     db.commit()
     db.refresh(job)
+    snapshot = state_snapshot(db, user_id, [event.id])
     return TheOddsSyncResponse(
         job=SyncJobRunRead.model_validate(job),
         sports_seen=result.sports_seen,
@@ -1184,6 +1215,11 @@ def run_the_odds_event_markets_sync(
         requests_used=result.requests_used,
         requests_remaining=result.requests_remaining,
         errors=result.errors,
+        sports=snapshot["sports"],
+        events=snapshot["events"],
+        markets=snapshot["markets"],
+        odds=snapshot["odds"],
+        sportsbooks=snapshot["sportsbooks"],
     )
 
 

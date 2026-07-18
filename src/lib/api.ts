@@ -321,6 +321,11 @@ export type TheOddsSyncResponse = {
   requests_used: string | null;
   requests_remaining: string | null;
   errors: string[];
+  sports: Sport[];
+  events: EventItem[];
+  markets: MarketRead[];
+  odds: OddsRead[];
+  sportsbooks: Sportsbook[];
 };
 
 export type TheOddsEventsResponse = {
@@ -330,6 +335,8 @@ export type TheOddsEventsResponse = {
   requests_used: string | null;
   requests_remaining: string | null;
   errors: string[];
+  sports: Sport[];
+  events: EventItem[];
 };
 
 export type PredictionRecord = {

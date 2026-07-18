@@ -205,6 +205,12 @@ const emptyBankrollControl: BankrollControl = {
 
 const nowIso = () => new Date().toISOString();
 
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  incoming.forEach((item) => byId.set(item.id, item));
+  return Array.from(byId.values());
+}
+
 function money(value: string | number, currency = "USD") {
   return new Intl.NumberFormat("es-VE", {
     style: "currency",
@@ -1023,7 +1029,8 @@ export default function DashboardClient() {
       const scanned = await postJson<TheOddsEventsResponse>("/intelligence/events/candidates", {
         sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
       });
-      await refresh();
+      setSports((current) => mergeById(current, scanned.sports));
+      setEvents(scanned.events);
       setMessage(
         `Candidatos cargados sin odds completas: ${scanned.events_upserted} juegos. Creditos restantes: ${scanned.requests_remaining ?? "n/d"}.`,
       );
@@ -1062,7 +1069,11 @@ export default function DashboardClient() {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
         ...eventMarketPayload(game, selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys),
       });
-      await refresh();
+      setSports((current) => mergeById(current, synced.sports));
+      setEvents((current) => mergeById(current, synced.events));
+      setSportsbooks((current) => mergeById(current, synced.sportsbooks));
+      setMarkets((current) => mergeById(current, synced.markets));
+      setOdds((current) => mergeById(current, synced.odds));
       setSelectedSimpleGameId(game.event.id);
       setMessage(
         `Cuotas cargadas para este juego: ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
@@ -1082,7 +1093,11 @@ export default function DashboardClient() {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
         ...eventMarketPayload(game, markets),
       });
-      await refresh();
+      setSports((current) => mergeById(current, synced.sports));
+      setEvents((current) => mergeById(current, synced.events));
+      setSportsbooks((current) => mergeById(current, synced.sportsbooks));
+      setMarkets((current) => mergeById(current, synced.markets));
+      setOdds((current) => mergeById(current, synced.odds));
       setSelectedSimpleGameId(game.event.id);
       setMessage(
         `Analisis profundo cargado: ${deepMarketLabels(markets)}. ${synced.odds_inserted} cuotas nuevas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,

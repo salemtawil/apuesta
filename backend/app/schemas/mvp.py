@@ -316,6 +316,8 @@ class TheOddsEventsResponse(BaseModel):
     requests_used: str | None
     requests_remaining: str | None
     errors: list[str]
+    sports: list[SportRead] = Field(default_factory=list)
+    events: list[EventRead] = Field(default_factory=list)
 
 
 class TheOddsSyncResponse(BaseModel):
@@ -328,6 +330,11 @@ class TheOddsSyncResponse(BaseModel):
     requests_used: str | None
     requests_remaining: str | None
     errors: list[str]
+    sports: list[SportRead] = Field(default_factory=list)
+    events: list[EventRead] = Field(default_factory=list)
+    markets: list[MarketRead] = Field(default_factory=list)
+    odds: list[OddsRead] = Field(default_factory=list)
+    sportsbooks: list[SportsbookRead] = Field(default_factory=list)
 
 
 class PredictionRecordRead(BaseModel):
