@@ -1113,10 +1113,34 @@ def run_the_odds_event_markets_sync(
     settings = get_settings()
     if not settings.the_odds_api_key:
         raise HTTPException(status_code=400, detail="THE_ODDS_API_KEY is not configured")
-    event = require_user_owned(db, Event, payload.event_id, user_id)
-    sport = db.get(Sport, event.sport_id)
-    if sport is None:
-        raise HTTPException(status_code=404, detail="Sport not found")
+    event = db.get(Event, payload.event_id)
+    if event is None or event.user_id != user_id:
+        if not payload.sport_key or not payload.provider_event_id or not payload.starts_at:
+            raise HTTPException(status_code=404, detail="Event not found. Busca candidatos otra vez antes de traer cuotas.")
+        sport = db.scalar(select(Sport).where(Sport.slug == payload.sport_key))
+        if sport is None:
+            sport = Sport(name=payload.league_name or payload.sport_key, slug=payload.sport_key)
+            db.add(sport)
+            db.flush()
+        event = Event(
+            id=payload.event_id,
+            user_id=user_id,
+            sport_id=sport.id,
+            league_name=payload.league_name or sport.name,
+            home_team=payload.home_team,
+            away_team=payload.away_team,
+            event_name=payload.event_name or payload.provider_event_id,
+            starts_at=payload.starts_at,
+            timezone="UTC",
+            venue=f"the_odds_api:{payload.provider_event_id}",
+            status="scheduled",
+        )
+        db.add(event)
+        db.flush()
+    else:
+        sport = db.get(Sport, event.sport_id)
+        if sport is None:
+            raise HTTPException(status_code=404, detail="Sport not found")
     started_at = utc_now_text()
     result = sync_the_odds_event_markets(
         db=db,

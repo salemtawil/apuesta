@@ -295,6 +295,36 @@ function deepMarketLabels(keys: string[]): string {
   return keys.map((key) => labels.get(key) ?? key).join(", ");
 }
 
+function providerEventId(game: SimpleGame): string | null {
+  const prefix = "the_odds_api:";
+  return game.event.venue?.startsWith(prefix) ? game.event.venue.slice(prefix.length) : null;
+}
+
+function eventMarketPayload(game: SimpleGame, markets: string[]) {
+  return {
+    event_id: game.event.id,
+    sport_key: game.sportSlug,
+    provider_event_id: providerEventId(game),
+    league_name: game.event.league_name,
+    home_team: game.event.home_team,
+    away_team: game.event.away_team,
+    event_name: game.event.event_name,
+    starts_at: game.event.starts_at,
+    regions: "us",
+    markets,
+  };
+}
+
+function readableError(caught: unknown, fallback: string): string {
+  if (!(caught instanceof Error)) return fallback;
+  try {
+    const parsed = JSON.parse(caught.message) as { detail?: string };
+    return parsed.detail ?? caught.message;
+  } catch {
+    return caught.message || fallback;
+  }
+}
+
 function candidateProfile(event: EventItem, sportSlug: string): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
@@ -986,26 +1016,6 @@ export default function DashboardClient() {
     });
   }
 
-  async function runOddsSync() {
-    setBusy(true);
-    setError(null);
-    try {
-      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
-        sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
-        regions: "us",
-        markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
-      });
-      await refresh();
-      setMessage(
-        `Datos reales actualizados para ${selectedSportKeys.length || 1} deporte(s): ${synced.events_upserted} juegos, ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudieron sincronizar odds reales.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function runCandidateScan() {
     setBusy(true);
     setError(null);
@@ -1024,15 +1034,33 @@ export default function DashboardClient() {
     }
   }
 
+  async function runOddsSync() {
+    setBusy(true);
+    setError(null);
+    try {
+      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
+        sport_keys: selectedSportKeys.length ? selectedSportKeys : ["baseball_mlb"],
+        regions: "us",
+        markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
+      });
+      await refresh();
+      setMessage(
+        `Sync avanzada: ${synced.events_upserted} juegos, ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
+      );
+    } catch (caught) {
+      setError(readableError(caught, "No se pudieron sincronizar odds reales."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runOddsSyncForGame(game: SimpleGame) {
     setBusy(true);
     setError(null);
     setMessage(`Buscando cuotas solo para ${game.event.event_name}...`);
     try {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
-        event_id: game.event.id,
-        regions: "us",
-        markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
+        ...eventMarketPayload(game, selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys),
       });
       await refresh();
       setSelectedSimpleGameId(game.event.id);
@@ -1040,7 +1068,7 @@ export default function DashboardClient() {
         `Cuotas cargadas para este juego: ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudieron cargar cuotas para este candidato.");
+      setError(readableError(caught, "No se pudieron cargar cuotas para este candidato."));
     } finally {
       setBusy(false);
     }
@@ -1052,9 +1080,7 @@ export default function DashboardClient() {
     setError(null);
     try {
       const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
-        event_id: game.event.id,
-        regions: "us",
-        markets,
+        ...eventMarketPayload(game, markets),
       });
       await refresh();
       setSelectedSimpleGameId(game.event.id);
@@ -1062,7 +1088,7 @@ export default function DashboardClient() {
         `Analisis profundo cargado: ${deepMarketLabels(markets)}. ${synced.odds_inserted} cuotas nuevas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudieron cargar mercados profundos para este juego.");
+      setError(readableError(caught, "No se pudieron cargar mercados profundos para este juego."));
     } finally {
       setBusy(false);
     }
@@ -1299,7 +1325,6 @@ export default function DashboardClient() {
               onDeepDiveForGame={runDeepDiveForGame}
               onLoadOddsForGame={runOddsSyncForGame}
               onPrepareGame={prepareSimpleGame}
-              onRefresh={runOddsSync}
               onScanEvents={runCandidateScan}
               selectedMarketKeys={selectedMarketKeys}
               setSelectedMarketKeys={setSelectedMarketKeys}
@@ -1780,7 +1805,6 @@ function SimpleToday({
   onDeepDiveForGame,
   onLoadOddsForGame,
   onPrepareGame,
-  onRefresh,
   onScanEvents,
   selectedMarketKeys,
   setSelectedMarketKeys,
@@ -1794,7 +1818,6 @@ function SimpleToday({
   onDeepDiveForGame: (game: SimpleGame) => void;
   onLoadOddsForGame: (game: SimpleGame) => void;
   onPrepareGame: (game: SimpleGame) => void;
-  onRefresh: () => void;
   onScanEvents: () => void;
   selectedMarketKeys: string[];
   setSelectedMarketKeys: (marketKeys: string[]) => void;
@@ -1856,8 +1879,7 @@ function SimpleToday({
           <p>Actualiza ligas reales y filtra por hoy, madrugada, proximas horas o toda la cartelera cargada.</p>
         </div>
         <div className="simple-header-actions">
-          <button className="btn" disabled={busy} onClick={onScanEvents}>Buscar candidatos</button>
-          <button className="btn btn-primary" disabled={busy} onClick={onRefresh}>Actualizar cuotas</button>
+          <button className="btn btn-primary" disabled={busy} onClick={onScanEvents}>Buscar candidatos</button>
         </div>
       </div>
 

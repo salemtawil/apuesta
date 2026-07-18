@@ -294,6 +294,13 @@ class TheOddsSyncRequest(BaseModel):
 
 class TheOddsEventMarketsRequest(BaseModel):
     event_id: str
+    sport_key: str | None = None
+    provider_event_id: str | None = None
+    league_name: str | None = None
+    home_team: str | None = None
+    away_team: str | None = None
+    event_name: str | None = None
+    starts_at: str | None = None
     regions: str = "us"
     markets: list[str] = Field(default_factory=lambda: ["h2h", "spreads", "totals"])
 
