@@ -512,6 +512,26 @@ button:disabled {
   gap: 0.35rem;
 }
 
+.candidate-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft);
+  padding: 0.75rem;
+}
+
+.candidate-box span {
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.candidate-box p {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .game-read span {
   color: var(--foreground);
   font-weight: 700;

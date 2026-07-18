@@ -159,6 +159,8 @@ type SimpleGame = {
   sportName: string;
   sportSlug: string;
   startsLabel: string;
+  candidateScore: number;
+  candidateReasons: string[];
   bestHome: BestPrice | null;
   bestAway: BestPrice | null;
   bestDraw: BestPrice | null;
@@ -291,6 +293,49 @@ function deepMarketKeysForSport(sportSlug: string): string[] {
 function deepMarketLabels(keys: string[]): string {
   const labels = new Map(deepMarketOptions.map((option) => [option.key, option.label]));
   return keys.map((key) => labels.get(key) ?? key).join(", ");
+}
+
+function candidateProfile(event: EventItem, sportSlug: string): { score: number; reasons: string[] } {
+  let score = 0;
+  const reasons: string[] = [];
+  const starts = new Date(event.starts_at);
+  const hoursToStart = (starts.getTime() - Date.now()) / (60 * 60 * 1000);
+
+  if (hoursToStart >= 0 && hoursToStart <= 12) {
+    score += 3;
+    reasons.push("empieza pronto");
+  } else if (hoursToStart > 12 && hoursToStart <= 36) {
+    score += 2;
+    reasons.push("buena ventana de analisis");
+  } else if (hoursToStart > 36 && hoursToStart <= 168) {
+    score += 1;
+    reasons.push("cartelera futura");
+  }
+
+  if (event.home_team && event.away_team) {
+    score += 2;
+    reasons.push("equipos identificados");
+  }
+
+  if (sportSlug.startsWith("soccer_")) {
+    score += 2;
+    reasons.push("futbol compatible con Triunfobet");
+  } else if (sportSlug.startsWith("baseball_") || sportSlug.startsWith("basketball_") || sportSlug.startsWith("icehockey_")) {
+    score += 2;
+    reasons.push("deporte fuerte para mercados base");
+  } else if (sportSlug.startsWith("mma_") || sportSlug.startsWith("boxing_")) {
+    score += 1;
+    reasons.push("combate disponible en Triunfobet");
+  }
+
+  const topLeagueTokens = ["MLB", "NBA", "WNBA", "NFL", "NHL", "Liga MX", "Premier", "La Liga", "Serie A", "Bundesliga", "MLS", "Copa", "World Cup", "Libertadores"];
+  if (topLeagueTokens.some((token) => event.league_name.toLowerCase().includes(token.toLowerCase()) || event.event_name.toLowerCase().includes(token.toLowerCase()))) {
+    score += 2;
+    reasons.push("liga de alta liquidez");
+  }
+
+  if (!reasons.length) reasons.push("solo candidato basico");
+  return { score: Math.min(score, 10), reasons };
 }
 
 function lineLabel(value: number | null) {
@@ -550,6 +595,9 @@ function buildSimpleGames(
       const awayPrice = awayCandidates.reduce<BestPrice | null>(selectBetterPrice, null);
       const drawPrice = drawCandidates.reduce<BestPrice | null>(selectBetterPrice, null);
       const hasCorePrices = Boolean(homePrice && awayPrice);
+      const sport = sportsById.get(event.sport_id);
+      const sportSlug = sport?.slug ?? "";
+      const profile = candidateProfile(event, sportSlug);
       const riskLabel = sportsbookIds.size >= 8 ? "Cobertura buena" : sportsbookIds.size >= 3 ? "Cobertura media" : "Poca cobertura";
       const forecast = buildMarketForecast({
         event,
@@ -564,9 +612,11 @@ function buildSimpleGames(
 
       return {
         event,
-        sportName: sportsById.get(event.sport_id)?.name ?? event.league_name,
-        sportSlug: sportsById.get(event.sport_id)?.slug ?? "",
+        sportName: sport?.name ?? event.league_name,
+        sportSlug,
         startsLabel: shortDate(event.starts_at),
+        candidateScore: profile.score,
+        candidateReasons: profile.reasons,
         bestHome: homePrice,
         bestAway: awayPrice,
         bestDraw: drawPrice,
@@ -582,7 +632,11 @@ function buildSimpleGames(
     .sort((left, right) => {
       const leftReady = Number(Boolean(left.bestHome && left.bestAway));
       const rightReady = Number(Boolean(right.bestHome && right.bestAway));
-      return rightReady - leftReady || new Date(left.event.starts_at).getTime() - new Date(right.event.starts_at).getTime();
+      return (
+        rightReady - leftReady ||
+        right.candidateScore - left.candidateScore ||
+        new Date(left.event.starts_at).getTime() - new Date(right.event.starts_at).getTime()
+      );
     });
 }
 
@@ -971,22 +1025,19 @@ export default function DashboardClient() {
   }
 
   async function runOddsSyncForGame(game: SimpleGame) {
-    if (!game.sportSlug) {
-      setError("No se pudo identificar el deporte de este juego.");
-      return;
-    }
     setBusy(true);
     setError(null);
+    setMessage(`Buscando cuotas solo para ${game.event.event_name}...`);
     try {
-      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/odds", {
-        sport_keys: [game.sportSlug],
+      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
+        event_id: game.event.id,
         regions: "us",
         markets: selectedMarketKeys.length ? selectedMarketKeys : coreMarketKeys,
       });
       await refresh();
       setSelectedSimpleGameId(game.event.id);
       setMessage(
-        `Cuotas cargadas para ${game.sportName}: ${synced.events_upserted} juegos, ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
+        `Cuotas cargadas para este juego: ${synced.odds_inserted} cuotas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudieron cargar cuotas para este candidato.");
@@ -2090,16 +2141,23 @@ function ForecastGameCard({
 
       <div className="forecast-main">
         <div>
-          <span>Ganador probable</span>
-          <strong>{forecast.probableWinner}</strong>
-          <small>{probabilityLabel(forecast.winnerProbability)} mercado sin margen</small>
+          <span>{needsOdds ? "Puntaje candidato" : "Ganador probable"}</span>
+          <strong>{needsOdds ? `${game.candidateScore}/10` : forecast.probableWinner}</strong>
+          <small>{needsOdds ? "antes de gastar creditos" : `${probabilityLabel(forecast.winnerProbability)} mercado sin margen`}</small>
         </div>
         <div>
-          <span>Confianza</span>
-          <strong>{forecast.confidence}</strong>
-          <small>{forecast.probabilityGap === null ? "Sin diferencial" : `${Math.round(forecast.probabilityGap * 100)} pts de ventaja`}</small>
+          <span>{needsOdds ? "Siguiente paso" : "Confianza"}</span>
+          <strong>{needsOdds ? "Traer cuotas" : forecast.confidence}</strong>
+          <small>{needsOdds ? "pedido por evento especifico" : forecast.probabilityGap === null ? "Sin diferencial" : `${Math.round(forecast.probabilityGap * 100)} pts de ventaja`}</small>
         </div>
       </div>
+
+      {needsOdds ? (
+        <div className="candidate-box">
+          <span>Por que mirarlo</span>
+          <p>{game.candidateReasons.join(" · ")}</p>
+        </div>
+      ) : null}
 
       <dl className="game-lines">
         <div>
@@ -2126,7 +2184,7 @@ function ForecastGameCard({
       </dl>
 
       <div className="game-read">
-        <p><span>Lectura:</span> {forecast.recommendation}</p>
+        <p><span>{needsOdds ? "Lectura previa:" : "Lectura:"}</span> {needsOdds ? "Aun no hay cuotas para inferir valor. Este filtro solo ayuda a decidir si vale gastar datos." : forecast.recommendation}</p>
         <p><span>Cobertura:</span> {game.riskLabel} · {game.sportsbookCount} casas · {game.marketCount} mercados</p>
       </div>
 

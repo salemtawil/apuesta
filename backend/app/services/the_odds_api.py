@@ -403,7 +403,10 @@ def upsert_market_odds(
     markets_created = 0
     odds_inserted = 0
     for outcome in market_payload.get("outcomes", []):
-        selection_name = str(outcome.get("name") or "")
+        outcome_name = str(outcome.get("name") or "")
+        outcome_description = str(outcome.get("description") or "")
+        selection_name = f"{outcome_description} {outcome_name}".strip() if outcome_description else outcome_name
+        participant = outcome_description or outcome_name
         if not selection_name:
             continue
         line = decimal_or_none(outcome.get("point"))
@@ -412,14 +415,14 @@ def upsert_market_odds(
                 Market.event_id == event.id,
                 Market.market_type == market_type,
                 Market.line == line,
-                Market.participant == selection_name,
+                Market.participant == participant,
             )
         )
         if market is None:
             market = Market(
                 event_id=event.id,
                 market_type=market_type,
-                participant=selection_name,
+                participant=participant,
                 line=line,
                 status="open",
             )
@@ -436,7 +439,7 @@ def upsert_market_odds(
             selection = MarketSelection(
                 market_id=market.id,
                 selection_name=selection_name,
-                participant=selection_name,
+                participant=participant,
             )
             db.add(selection)
             db.flush()

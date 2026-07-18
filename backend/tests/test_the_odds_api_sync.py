@@ -248,7 +248,7 @@ def test_sync_the_odds_event_markets_uses_single_external_event() -> None:
         db.commit()
 
         assert result.events_upserted == 1
-        assert result.markets_upserted == 4
+        assert result.markets_upserted == 3
         assert result.odds_inserted == 4
         assert result.requests_remaining == "497"
         assert db.scalar(select(Market).where(Market.market_type == "h2h_h1")) is not None
