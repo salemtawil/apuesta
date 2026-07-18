@@ -35,6 +35,17 @@ class TheOddsClient(Protocol):
     def get_events(self, sport_key: str, date_format: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
         ...
 
+    def get_event_odds(
+        self,
+        sport_key: str,
+        event_id: str,
+        regions: str,
+        markets: list[str],
+        odds_format: str,
+        date_format: str,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        ...
+
 
 class TheOddsApiClient:
     def __init__(self, api_key: str, base_url: str = THE_ODDS_BASE_URL) -> None:
@@ -81,6 +92,26 @@ class TheOddsApiClient:
             },
         )
         return list(payload), headers
+
+    def get_event_odds(
+        self,
+        sport_key: str,
+        event_id: str,
+        regions: str,
+        markets: list[str],
+        odds_format: str,
+        date_format: str,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        payload, headers = self._get(
+            f"/v4/sports/{sport_key}/events/{event_id}/odds/",
+            {
+                "regions": regions,
+                "markets": ",".join(markets),
+                "oddsFormat": odds_format,
+                "dateFormat": date_format,
+            },
+        )
+        return dict(payload), headers
 
 
 @dataclass
@@ -172,6 +203,57 @@ def sync_the_odds(
     return result
 
 
+def sync_the_odds_event_markets(
+    db: Session,
+    user_id: str,
+    api_key: str,
+    event: Event,
+    sport_key: str,
+    regions: str = "us",
+    markets: list[str] | None = None,
+    client: TheOddsClient | None = None,
+) -> TheOddsSyncResult:
+    active_client = client or TheOddsApiClient(api_key)
+    selected_markets = normalize_markets(markets)
+    result = TheOddsSyncResult()
+    provider_event_id = extract_provider_event_id(event)
+    if not provider_event_id:
+        result.errors.append("El evento no tiene id externo de The Odds API. Busca candidatos primero.")
+        return result
+
+    try:
+        event_payload, odds_headers = active_client.get_event_odds(
+            sport_key=sport_key,
+            event_id=provider_event_id,
+            regions=regions,
+            markets=selected_markets,
+            odds_format="decimal",
+            date_format="iso",
+        )
+        update_usage(result, odds_headers)
+        sport = upsert_sport(db, sport_key, {"title": event.league_name})
+        local_event = upsert_event(db, user_id, sport, event_payload)
+        result.events_upserted += 1
+        for bookmaker_payload in event_payload.get("bookmakers", []):
+            sportsbook = upsert_sportsbook(db, user_id, bookmaker_payload)
+            result.sportsbooks_upserted += 1
+            for market_payload in bookmaker_payload.get("markets", []):
+                markets_created, odds_inserted = upsert_market_odds(
+                    db=db,
+                    user_id=user_id,
+                    event=local_event,
+                    sportsbook=sportsbook,
+                    market_payload=market_payload,
+                    captured_at=bookmaker_payload.get("last_update") or event_payload.get("commence_time"),
+                )
+                result.markets_upserted += markets_created
+                result.odds_inserted += odds_inserted
+    except Exception as exc:  # pragma: no cover - exercised by API route behavior.
+        result.errors.append(f"{sport_key}/{provider_event_id}: {exc}")
+
+    return result
+
+
 def discover_the_odds_events(
     db: Session,
     user_id: str,
@@ -249,6 +331,7 @@ def upsert_event(db: Session, user_id: str, sport: Sport, payload: dict[str, Any
     starts_at = payload.get("commence_time")
     league_name = payload.get("sport_title") or payload.get("sport_key") or sport.name
     event_name = f"{away_team} @ {home_team}" if home_team and away_team else str(payload.get("id"))
+    provider_venue = encode_provider_event_id(payload.get("id"))
     event = db.scalar(
         select(Event).where(
             Event.user_id == user_id,
@@ -268,6 +351,7 @@ def upsert_event(db: Session, user_id: str, sport: Sport, payload: dict[str, Any
             event_name=event_name,
             starts_at=str(starts_at),
             timezone="UTC",
+            venue=provider_venue,
             status="scheduled",
         )
         db.add(event)
@@ -275,8 +359,23 @@ def upsert_event(db: Session, user_id: str, sport: Sport, payload: dict[str, Any
     else:
         event.league_name = str(league_name)
         event.event_name = event_name
+        if provider_venue:
+            event.venue = provider_venue
         event.status = "scheduled"
     return event
+
+
+def encode_provider_event_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    return f"the_odds_api:{value}"
+
+
+def extract_provider_event_id(event: Event) -> str | None:
+    prefix = "the_odds_api:"
+    if event.venue and event.venue.startswith(prefix):
+        return event.venue[len(prefix):]
+    return None
 
 
 def upsert_sportsbook(db: Session, user_id: str, payload: dict[str, Any]) -> Sportsbook:

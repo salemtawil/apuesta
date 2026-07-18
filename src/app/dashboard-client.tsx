@@ -75,6 +75,27 @@ const marketSyncOptions = [
   { key: "spreads", label: "Handicap", note: "spread" },
   { key: "totals", label: "Altas/Bajas", note: "total puntos/goles" },
 ];
+const genericDeepMarketKeys = ["alternate_spreads", "alternate_totals", "team_totals"];
+const deepMarketOptions = [
+  { key: "alternate_spreads", label: "Handicaps alternos" },
+  { key: "alternate_totals", label: "Totales alternos" },
+  { key: "team_totals", label: "Totales por equipo" },
+  { key: "h2h_h1", label: "Ganador 1H" },
+  { key: "spreads_h1", label: "Handicap 1H" },
+  { key: "totals_h1", label: "Total 1H" },
+  { key: "draw_no_bet", label: "Draw no bet" },
+  { key: "btts", label: "Ambos anotan" },
+  { key: "h2h_1st_5_innings", label: "MLB 1ras 5" },
+  { key: "spreads_1st_5_innings", label: "Handicap 1ras 5" },
+  { key: "totals_1st_5_innings", label: "Total 1ras 5" },
+  { key: "pitcher_strikeouts", label: "K pitcher" },
+  { key: "batter_total_bases", label: "Bases bateador" },
+  { key: "player_points", label: "Puntos jugador" },
+  { key: "player_rebounds", label: "Rebotes jugador" },
+  { key: "player_assists", label: "Asistencias jugador" },
+  { key: "player_shots_on_goal", label: "Tiros al arco" },
+  { key: "player_anytime_td", label: "TD en cualquier momento" },
+];
 const triunfobetStyleKeys = [
   "soccer_mexico_ligamx",
   "soccer_epl",
@@ -243,6 +264,33 @@ function dateFilterLabel(mode: DateFilterMode) {
 function selectBetterPrice(current: BestPrice | null, candidate: BestPrice) {
   if (!current || candidate.decimalOdds > current.decimalOdds) return candidate;
   return current;
+}
+
+function deepMarketKeysForSport(sportSlug: string): string[] {
+  if (sportSlug.startsWith("soccer_")) {
+    return ["draw_no_bet", "btts", "h2h_h1", "totals_h1", "team_totals"];
+  }
+  if (sportSlug.startsWith("baseball_")) {
+    return ["h2h_1st_5_innings", "spreads_1st_5_innings", "totals_1st_5_innings", "pitcher_strikeouts", "batter_total_bases"];
+  }
+  if (sportSlug.startsWith("basketball_")) {
+    return ["h2h_h1", "spreads_h1", "totals_h1", "team_totals", "player_points", "player_rebounds", "player_assists"];
+  }
+  if (sportSlug.startsWith("icehockey_")) {
+    return ["h2h_p1", "spreads_p1", "totals_p1", "team_totals", "player_shots_on_goal", "player_goals"];
+  }
+  if (sportSlug.startsWith("americanfootball_")) {
+    return ["h2h_h1", "spreads_h1", "totals_h1", "team_totals", "player_pass_yds", "player_rush_yds", "player_reception_yds", "player_anytime_td"];
+  }
+  if (sportSlug.startsWith("tennis_")) {
+    return ["h2h_s1", "spreads_s1", "totals_s1", "alternate_totals_s1"];
+  }
+  return genericDeepMarketKeys;
+}
+
+function deepMarketLabels(keys: string[]): string {
+  const labels = new Map(deepMarketOptions.map((option) => [option.key, option.label]));
+  return keys.map((key) => labels.get(key) ?? key).join(", ");
 }
 
 function lineLabel(value: number | null) {
@@ -947,6 +995,28 @@ export default function DashboardClient() {
     }
   }
 
+  async function runDeepDiveForGame(game: SimpleGame) {
+    const markets = deepMarketKeysForSport(game.sportSlug);
+    setBusy(true);
+    setError(null);
+    try {
+      const synced = await postJson<TheOddsSyncResponse>("/intelligence/sync/event-markets", {
+        event_id: game.event.id,
+        regions: "us",
+        markets,
+      });
+      await refresh();
+      setSelectedSimpleGameId(game.event.id);
+      setMessage(
+        `Analisis profundo cargado: ${deepMarketLabels(markets)}. ${synced.odds_inserted} cuotas nuevas. Creditos restantes: ${synced.requests_remaining ?? "n/d"}.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron cargar mercados profundos para este juego.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function prepareSimpleGame(game: SimpleGame) {
     setSelectedSimpleGameId(game.event.id);
     setAnalysisForm((current) => ({
@@ -1175,6 +1245,7 @@ export default function DashboardClient() {
               busy={busy}
               games={simpleGames}
               lastOddsSync={lastOddsSync}
+              onDeepDiveForGame={runDeepDiveForGame}
               onLoadOddsForGame={runOddsSyncForGame}
               onPrepareGame={prepareSimpleGame}
               onRefresh={runOddsSync}
@@ -1655,6 +1726,7 @@ function SimpleToday({
   busy,
   games,
   lastOddsSync,
+  onDeepDiveForGame,
   onLoadOddsForGame,
   onPrepareGame,
   onRefresh,
@@ -1668,6 +1740,7 @@ function SimpleToday({
   busy: boolean;
   games: SimpleGame[];
   lastOddsSync: SyncJobRun | undefined;
+  onDeepDiveForGame: (game: SimpleGame) => void;
   onLoadOddsForGame: (game: SimpleGame) => void;
   onPrepareGame: (game: SimpleGame) => void;
   onRefresh: () => void;
@@ -1918,6 +1991,7 @@ function SimpleToday({
             game={game}
             isSelected={selectedGame?.event.id === game.event.id}
             key={game.event.id}
+            onDeepDive={onDeepDiveForGame}
             onLoadOdds={onLoadOddsForGame}
             onPrepare={onPrepareGame}
           />
@@ -1990,16 +2064,19 @@ function ForecastGamePanel({ game }: { game: SimpleGame }) {
 function ForecastGameCard({
   game,
   isSelected,
+  onDeepDive,
   onLoadOdds,
   onPrepare,
 }: {
   game: SimpleGame;
   isSelected: boolean;
+  onDeepDive: (game: SimpleGame) => void;
   onLoadOdds: (game: SimpleGame) => void;
   onPrepare: (game: SimpleGame) => void;
 }) {
   const { forecast } = game;
   const needsOdds = !(game.bestHome && game.bestAway);
+  const deepMarkets = deepMarketKeysForSport(game.sportSlug);
 
   return (
     <article className={isSelected ? "game-card game-card-selected" : "game-card"}>
@@ -2059,6 +2136,16 @@ function ForecastGameCard({
         ) : (
           <button className="btn" onClick={() => onPrepare(game)}>{isSelected ? "Pronostico abierto" : "Ver pronostico"}</button>
         )}
+        {!needsOdds ? (
+          <button
+            className="mini-btn"
+            onClick={() => onDeepDive(game)}
+            title={deepMarketLabels(deepMarkets)}
+            type="button"
+          >
+            Analizar mas profundo · {deepMarkets.length}
+          </button>
+        ) : null}
         <a className="mini-btn" href="#avanzado">Ver avanzado</a>
       </div>
     </article>

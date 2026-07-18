@@ -85,6 +85,7 @@ from app.schemas.mvp import (
     SyncJobRunRead,
     TeamStatCreate,
     TeamStatRead,
+    TheOddsEventMarketsRequest,
     TheOddsEventsRequest,
     TheOddsEventsResponse,
     TheOddsSyncRequest,
@@ -105,7 +106,7 @@ from app.services.odds import (
 )
 from app.services.settlement import profit_loss, settle_single
 from app.services.sports_intelligence import analyze_matchup
-from app.services.the_odds_api import discover_the_odds_events, sync_the_odds
+from app.services.the_odds_api import discover_the_odds_events, sync_the_odds, sync_the_odds_event_markets
 
 router = APIRouter()
 
@@ -1081,6 +1082,65 @@ def run_the_odds_sync(
         user_id=user_id,
         provider_key="the_odds_api",
         job_type="odds_current",
+        status="error" if result.errors and result.records_upserted == 0 else "success",
+        started_at=started_at,
+        finished_at=finished_at,
+        records_upserted=result.records_upserted,
+        error_message="; ".join(result.errors) if result.errors else None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return TheOddsSyncResponse(
+        job=SyncJobRunRead.model_validate(job),
+        sports_seen=result.sports_seen,
+        events_upserted=result.events_upserted,
+        markets_upserted=result.markets_upserted,
+        odds_inserted=result.odds_inserted,
+        sportsbooks_upserted=result.sportsbooks_upserted,
+        requests_used=result.requests_used,
+        requests_remaining=result.requests_remaining,
+        errors=result.errors,
+    )
+
+
+@router.post("/intelligence/sync/event-markets", response_model=TheOddsSyncResponse)
+def run_the_odds_event_markets_sync(
+    payload: TheOddsEventMarketsRequest,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(current_user_id),
+) -> TheOddsSyncResponse:
+    settings = get_settings()
+    if not settings.the_odds_api_key:
+        raise HTTPException(status_code=400, detail="THE_ODDS_API_KEY is not configured")
+    event = require_user_owned(db, Event, payload.event_id, user_id)
+    sport = db.get(Sport, event.sport_id)
+    if sport is None:
+        raise HTTPException(status_code=404, detail="Sport not found")
+    started_at = utc_now_text()
+    result = sync_the_odds_event_markets(
+        db=db,
+        user_id=user_id,
+        api_key=settings.the_odds_api_key,
+        event=event,
+        sport_key=sport.slug,
+        regions=payload.regions,
+        markets=payload.markets,
+    )
+    finished_at = utc_now_text()
+    provider = db.scalar(
+        select(DataProvider).where(
+            DataProvider.user_id == user_id,
+            DataProvider.provider_key == "the_odds_api",
+        )
+    )
+    if provider is not None:
+        provider.last_sync_at = finished_at
+        provider.status = "error" if result.errors and result.records_upserted == 0 else "configured"
+    job = SyncJobRun(
+        user_id=user_id,
+        provider_key="the_odds_api",
+        job_type="event_markets",
         status="error" if result.errors and result.records_upserted == 0 else "success",
         started_at=started_at,
         finished_at=finished_at,

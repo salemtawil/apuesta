@@ -292,6 +292,12 @@ class TheOddsSyncRequest(BaseModel):
     markets: list[str] = Field(default_factory=lambda: ["h2h", "spreads", "totals"])
 
 
+class TheOddsEventMarketsRequest(BaseModel):
+    event_id: str
+    regions: str = "us"
+    markets: list[str] = Field(default_factory=lambda: ["h2h", "spreads", "totals"])
+
+
 class TheOddsEventsRequest(BaseModel):
     sport_keys: list[str] = Field(default_factory=lambda: ["baseball_mlb"])
 

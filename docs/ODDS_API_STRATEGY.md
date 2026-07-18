@@ -91,6 +91,28 @@ Siguiente fase:
 - props de jugadores, solo cuando el deporte y la casa lo tengan disponible.
 - BetBuilder no debe sincronizarse en masa; se debe analizar manualmente por evento porque cambia mucho y puede gastar creditos rapido.
 
+## Analisis profundo por evento
+
+The Odds API permite mercados extra solo por evento individual usando `/events/{eventId}/odds`. Esto es mejor para cuidar creditos porque no descarga mercados profundos de toda una liga.
+
+La app usa el boton **Analizar mas profundo** solo despues de que el juego ya tiene cuotas base.
+
+Presets actuales:
+
+- Futbol: draw no bet, ambos anotan, ganador 1H, total 1H, team totals.
+- Beisbol: primeras 5 entradas, handicap 1ras 5, total 1ras 5, strikeouts de pitcher, bases totales de bateador.
+- Baloncesto: ganador 1H, handicap 1H, total 1H, team totals, puntos/rebotes/asistencias de jugador.
+- Hockey: primer periodo, team totals, tiros al arco, goles y puntos de jugador.
+- Futbol americano: 1H, team totals, yards de pase/carrera/recepcion y touchdown anytime.
+- Tenis: ganador 1er set, handicap 1er set y total 1er set.
+
+Regla:
+
+```text
+No usar Analizar mas profundo para explorar.
+Usarlo solo cuando el juego ya paso el primer filtro y realmente podria convertirse en pick.
+```
+
 ## Decision de producto
 
 La app debe comportarse asi:
@@ -101,4 +123,3 @@ La app debe comportarse asi:
 - Separar deportes compatibles con Triunfobet de deportes experimentales.
 - Guardar creditos restantes despues de cada sync.
 - Mas adelante, usar `/events` gratis para listar eventos primero y luego pedir odds solo de los mejores candidatos.
-

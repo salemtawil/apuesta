@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models import Event, Market, OddsSnapshot, Sport, Sportsbook
-from app.services.the_odds_api import discover_the_odds_events, sync_the_odds
+from app.services.the_odds_api import discover_the_odds_events, sync_the_odds, sync_the_odds_event_markets
 
 
 class FakeTheOddsClient:
@@ -99,6 +99,56 @@ class FakeTheOddsClient:
             {"x-requests-used": "0", "x-requests-remaining": "499"},
         )
 
+    def get_event_odds(
+        self,
+        sport_key: str,
+        event_id: str,
+        regions: str,
+        markets: list[str],
+        odds_format: str,
+        date_format: str,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        assert sport_key == "basketball_nba"
+        assert event_id == "evt_2"
+        assert regions == "us"
+        assert markets == ["h2h_h1", "player_points"]
+        assert odds_format == "decimal"
+        assert date_format == "iso"
+        return (
+            {
+                "id": "evt_2",
+                "sport_key": "basketball_nba",
+                "sport_title": "NBA",
+                "commence_time": "2026-07-21T00:00:00Z",
+                "home_team": "Los Angeles Lakers",
+                "away_team": "Miami Heat",
+                "bookmakers": [
+                    {
+                        "key": "draftkings",
+                        "title": "DraftKings",
+                        "last_update": "2026-07-18T05:00:00Z",
+                        "markets": [
+                            {
+                                "key": "h2h_h1",
+                                "outcomes": [
+                                    {"name": "Miami Heat", "price": "1.95"},
+                                    {"name": "Los Angeles Lakers", "price": "1.87"},
+                                ],
+                            },
+                            {
+                                "key": "player_points",
+                                "outcomes": [
+                                    {"name": "Over", "description": "LeBron James", "price": "1.91", "point": 24.5},
+                                    {"name": "Under", "description": "LeBron James", "price": "1.91", "point": 24.5},
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            },
+            {"x-requests-used": "2", "x-requests-remaining": "497"},
+        )
+
 
 def test_sync_the_odds_maps_provider_payload_to_local_models() -> None:
     engine = create_engine(
@@ -162,3 +212,44 @@ def test_discover_the_odds_events_maps_candidates_without_odds() -> None:
         assert db.scalar(select(Event).where(Event.event_name == "Miami Heat @ Los Angeles Lakers")) is not None
         assert len(list(db.scalars(select(Market)).all())) == 0
         assert len(list(db.scalars(select(OddsSnapshot)).all())) == 0
+
+
+def test_sync_the_odds_event_markets_uses_single_external_event() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    Base.metadata.create_all(bind=engine)
+
+    with testing_session() as db:
+        discover_the_odds_events(
+            db=db,
+            user_id="00000000-0000-4000-8000-000000000077",
+            api_key="fake",
+            sport_keys=["basketball_nba"],
+            client=FakeTheOddsClient(),
+        )
+        db.commit()
+        event = db.scalar(select(Event).where(Event.event_name == "Miami Heat @ Los Angeles Lakers"))
+        assert event is not None
+
+        result = sync_the_odds_event_markets(
+            db=db,
+            user_id="00000000-0000-4000-8000-000000000077",
+            api_key="fake",
+            event=event,
+            sport_key="basketball_nba",
+            regions="us",
+            markets=["h2h_h1", "player_points"],
+            client=FakeTheOddsClient(),
+        )
+        db.commit()
+
+        assert result.events_upserted == 1
+        assert result.markets_upserted == 4
+        assert result.odds_inserted == 4
+        assert result.requests_remaining == "497"
+        assert db.scalar(select(Market).where(Market.market_type == "h2h_h1")) is not None
+        assert db.scalar(select(Market).where(Market.market_type == "player_points")) is not None
