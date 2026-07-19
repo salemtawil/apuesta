@@ -332,6 +332,10 @@ function readableError(caught: unknown, fallback: string): string {
   }
 }
 
+function openAdvancedTools() {
+  document.getElementById("avanzado")?.setAttribute("open", "true");
+}
+
 function candidateProfile(event: EventItem, sportSlug: string): { score: number; reasons: string[] } {
   let score = 0;
   const reasons: string[] = [];
@@ -2199,7 +2203,7 @@ function ForecastGamePanel({ game }: { game: SimpleGame }) {
         <p>
           Lectura basada en cuotas reales guardadas. No es una garantia: confirma lineups, lesiones y cambios de linea antes de apostar.
         </p>
-        <a className="btn" href="#avanzado">Abrir avanzado</a>
+        <a className="btn" href="#avanzado" onClick={openAdvancedTools}>Abrir avanzado</a>
       </div>
     </div>
   );
@@ -2297,7 +2301,7 @@ function ForecastGameCard({
             Profundizar · {deepMarkets.length}
           </button>
         ) : null}
-        <a className="mini-btn" href="#avanzado">Ver avanzado</a>
+        <a className="mini-btn" href="#avanzado" onClick={openAdvancedTools}>Ver avanzado</a>
       </div>
     </article>
   );
@@ -2331,7 +2335,7 @@ function PreparedGamePanel({ game }: { game: SimpleGame }) {
           El partido ya quedó cargado en los formularios avanzados. Para registrar una apuesta,
           abre Avanzado y usa Crear apuesta.
         </p>
-        <a className="btn" href="#avanzado">Abrir avanzado</a>
+        <a className="btn" href="#avanzado" onClick={openAdvancedTools}>Abrir avanzado</a>
       </div>
     </div>
   );
@@ -2375,7 +2379,7 @@ function SimpleGameCard({
 
       <div className="game-actions">
         <button className="btn" onClick={() => onPrepare(game)}>{isSelected ? "Preparado" : "Preparar análisis"}</button>
-        <a className="mini-btn" href="#avanzado">Ver avanzado</a>
+        <a className="mini-btn" href="#avanzado" onClick={openAdvancedTools}>Ver avanzado</a>
       </div>
     </article>
   );
